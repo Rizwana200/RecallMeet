@@ -36,7 +36,7 @@ type Meeting = {
 export default function DashboardPage() {
   const { isCheckingAuth } = useRequireAuth();
   const router = useRouter();
-  usePageTitle("Dashboard — MeetMind");
+  usePageTitle("Dashboard — RecallMeet");
   const logout = useAuthStore((state) => state.logout);
 
   async function handleLogout() {

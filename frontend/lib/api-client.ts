@@ -6,7 +6,7 @@ import { X_REQUESTED_WITH_HEADER, X_REQUESTED_WITH_VALUE } from "./csrf";
 import { refreshAccessToken, refreshStatus } from "./session-refresh";
 
 export const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  baseURL: process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000",
   withCredentials: true,
 });
 

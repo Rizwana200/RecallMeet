@@ -36,9 +36,9 @@ const features = [
 ];
 
 export const metadata: Metadata = {
-  title: "MeetMind — AI meeting intelligence",
+  title: "RecallMeet— AI meeting intelligence",
   description:
-    "MeetMind transcribes your audio and video recordings, summarizes the discussion, and lets you chat with your meetings.",
+    "RecallMeet transcribes your audio and video recordings, summarizes the discussion, and lets you chat with your meetings.",
 };
 
 export default function Home() {
@@ -51,7 +51,7 @@ export default function Home() {
             <span className="text-xl font-bold">M</span>
           </div>
           <span className="font-heading text-xl font-semibold text-foreground select-none">
-            MeetMind
+            RecallMeet
           </span>
         </div>
         <nav className="flex items-center gap-3">
@@ -78,7 +78,7 @@ export default function Home() {
           <span className="text-primary">notes, action items, and answers</span>
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
-          MeetMind transcribes your audio and video recordings, summarizes the
+          RecallMeet transcribes your audio and video recordings, summarizes the
           discussion, and lets you chat with your meetings to find anything in
           seconds.
         </p>

@@ -27,7 +27,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    document.title = "Log in — MeetMind";
+    document.title = "Log in — RecallMeet";
 
     // Read sessionExpired in an effect (not in a useState initializer). Reading
     // it during the initial render would make the client's first paint differ

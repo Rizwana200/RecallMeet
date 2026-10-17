@@ -350,7 +350,7 @@ function ChatSidebar({
 export default function ChatPage() {
   const { isCheckingAuth } = useRequireAuth();
   const queryClient = useQueryClient();
-  usePageTitle("Chat — MeetMind");
+  usePageTitle("Chat — RecallMeet");
 
   const {
     data: workspaces,

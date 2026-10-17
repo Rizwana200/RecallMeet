@@ -19,14 +19,14 @@ export function LegalShell({
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6">
         <Link
           href="/"
-          aria-label="Go to MeetMind home"
+          aria-label="Go to RecallMeethome"
           className="flex items-center gap-2"
         >
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <span className="text-xl font-bold">M</span>
           </div>
           <span className="font-heading text-xl font-semibold text-foreground select-none">
-            MeetMind
+            RecallMeet
           </span>
         </Link>
       </header>

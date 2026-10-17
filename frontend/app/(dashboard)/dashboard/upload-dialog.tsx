@@ -450,7 +450,7 @@ export function UploadDialog({
                 </p>
 
                 <p className="mt-2 text-xs leading-5 text-green-700/80 dark:text-green-400/80">
-                  You can continue using MeetMind while we finish
+                  You can continue using RecallMeet while we finish
                   processing your meeting.
                 </p>
               </div>

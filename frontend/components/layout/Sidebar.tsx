@@ -125,7 +125,7 @@ function SidebarBrand({
             <span className="text-xl font-bold">M</span>
           </div>
           <span className="font-heading text-lg font-semibold text-sidebar-foreground whitespace-nowrap select-none">
-            MeetMind
+            RecallMeet
           </span>
         </Link>
       </motion.div>

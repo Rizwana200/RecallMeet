@@ -6,9 +6,9 @@ import { LegalShell } from "@/components/legal-shell";
 import { LegalSection } from "@/components/legal-section";
 
 export const metadata: Metadata = {
-  title: "Terms & Conditions — MeetMind",
+  title: "Terms & Conditions — RecallMeet",
   description:
-    "The terms governing your use of MeetMind, including account responsibilities, acceptable use, and our AI-generated content disclaimer.",
+    "The terms governing your use of RecallMeet, including account responsibilities, acceptable use, and our AI-generated content disclaimer.",
 };
 
 const LAST_UPDATED = "September 7, 2026";
@@ -21,7 +21,7 @@ export default function TermsPage() {
     <LegalShell title="Terms and Conditions" lastUpdated={LAST_UPDATED}>
       <LegalSection id="acceptance-of-these-terms" title="Acceptance of These Terms">
         <p>
-          By creating an account or using MeetMind (&ldquo;the
+          By creating an account or using RecallMeet (&ldquo;the
           Service&rdquo;), you agree to these Terms and Conditions. If you do
           not agree, please do not use the Service.
         </p>
@@ -45,9 +45,9 @@ export default function TermsPage() {
 
       <LegalSection id="your-content" title="Your Content">
         <p>
-          You retain ownership of the recordings you upload to MeetMind and the
+          You retain ownership of the recordings you upload to RecallMeet and the
           transcripts and summaries generated from them. By uploading content,
-          you grant MeetMind a limited license to process, store, and display
+          you grant RecallMeet a limited license to process, store, and display
           that content solely to provide the functionality of the Service —
           including transcription, summarization, and the chat feature.
         </p>
@@ -99,7 +99,7 @@ export default function TermsPage() {
         title="Limitation of Liability"
       >
         <p>
-          To the maximum extent permitted by law, MeetMind shall not be liable
+          To the maximum extent permitted by law, RecallMeet shall not be liable
           for any indirect, incidental, special, or consequential damages
           arising out of or in connection with your use of the Service,
           including loss of data or loss of business.

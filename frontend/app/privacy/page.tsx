@@ -6,9 +6,9 @@ import { LegalShell } from "@/components/legal-shell";
 import { LegalSection } from "@/components/legal-section";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — MeetMind",
+  title: "Privacy Policy — RecallMeet",
   description:
-    "How MeetMind collects, uses, and protects your data — including how meetings, transcripts, and summaries are handled.",
+    "How RecallMeet collects, uses, and protects your data — including how meetings, transcripts, and summaries are handled.",
 };
 
 const LAST_UPDATED = "September 7, 2026";
@@ -21,7 +21,7 @@ export default function PrivacyPage() {
     <LegalShell title="Privacy Policy" lastUpdated={LAST_UPDATED}>
       <LegalSection id="information-we-collect" title="Information We Collect">
         <p>
-          When you use MeetMind, we collect the following categories of
+          When you use RecallMeet, we collect the following categories of
           information:
         </p>
         <ul className="list-disc space-y-2 pl-5">
@@ -122,7 +122,7 @@ export default function PrivacyPage() {
 
       <LegalSection id="cookies" title="Cookies">
         <p>
-          MeetMind uses a single, secure (HTTP-only) authentication cookie to
+          RecallMeet uses a single, secure (HTTP-only) authentication cookie to
           keep you signed in and to refresh your session when it expires. We do
           not use cookies for advertising or cross-site tracking.
         </p>
@@ -153,7 +153,7 @@ export default function PrivacyPage() {
       <LegalSection id="no-sale-of-data" title="No Sale of Data">
         <p>
           We do not sell your personal information or your meeting content. Your
-          data is used solely to provide and improve the MeetMind service as
+          data is used solely to provide and improve the RecallMeet service as
           described in this policy.
         </p>
       </LegalSection>

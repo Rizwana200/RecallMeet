@@ -32,14 +32,14 @@ export function AuthShell({
       <div className="relative w-full max-w-sm">
         <Link
           href="/"
-          aria-label="Go to MeetMind home"
+          aria-label="Go to RecallMeet home"
           className="mb-7 flex select-none items-center justify-center gap-2 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           <div className="flex h-9 w-9 select-none items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <span className="select-none text-xl font-bold">M</span>
           </div>
           <span className="select-none font-heading text-xl font-semibold text-foreground">
-            MeetMind
+            RecallMeet
           </span>
         </Link>
 

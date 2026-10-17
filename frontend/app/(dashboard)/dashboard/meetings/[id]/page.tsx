@@ -80,7 +80,7 @@ export default function MeetingDetailPage({
   const { id: meetingId } = use(params);
   const { isCheckingAuth } = useRequireAuth();
   const router = useRouter();
-  usePageTitle("Meeting — MeetMind");
+  usePageTitle("Meeting — RecallMeet");
 
   const {
     data: workspaces,

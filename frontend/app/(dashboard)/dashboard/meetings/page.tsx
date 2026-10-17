@@ -29,7 +29,7 @@ type Meeting = {
 
 export default function MeetingsPage() {
   const { isCheckingAuth } = useRequireAuth();
-  usePageTitle("Meetings — MeetMind");
+  usePageTitle("Meetings — RecallMeet");
 
   const {
     data: workspaces,

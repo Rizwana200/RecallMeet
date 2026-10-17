@@ -28,7 +28,7 @@ export default function SettingsPage() {
   const router = useRouter();
   const logout = useAuthStore((state) => state.logout);
   const { isCheckingAuth } = useRequireAuth();
-  usePageTitle("Settings — MeetMind");
+  usePageTitle("Settings — RecallMeet");
 
   const { data: user } = useQuery({
     queryKey: ["me"],
