@@ -1,8 +1,8 @@
-# MeetMind — AI Meeting Intelligence
+# RecallMeet — AI Meeting Intelligence
 
 > **Turn every meeting into notes, action items, and answers.**
 
-MeetMind is a full-stack AI application that lets teams upload audio and video
+RecallMeet is a full-stack AI application that lets teams upload audio and video
 recordings of meetings, get them automatically **transcribed**, distilled into
 **summaries and action items**, and then **chat with the content** across all of
 their meetings via a grounded, source-cited RAG assistant.
@@ -38,7 +38,7 @@ locally, and how to test it.
 
 ## 🔗 Repository
 
-**Repository:** `https://github.com/prakashkumarprasad/MeetMind`
+**Repository:** `https://github.com/Rizwana200/RecallMeet`
 
 The repository is a single monorepo containing two top-level packages:
 `backend/` (FastAPI + Celery + PostgreSQL/pgvector) and `frontend/`
@@ -48,10 +48,10 @@ The repository is a single monorepo containing two top-level packages:
 
 ## Overview
 
-MeetMind solves a common problem: meeting recordings are locked inside audio and
+RecallMeet solves a common problem: meeting recordings are locked inside audio and
 video files. Teams can't search them, skim them, or ask questions about them.
 
-MeetMind's flow is:
+RecallMeet's flow is:
 
 1. **Upload** — a user uploads an audio or video recording to their workspace.
    Files go straight to an S3-compatible bucket via a **presigned URL**, so large
