@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
 
-    APP_NAME: str = "MeetMind"
+    APP_NAME: str = "RecallMeet"
     ENVIRONMENT: str = "development"
     DEBUG: bool = False
 

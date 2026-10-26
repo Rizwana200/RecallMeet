@@ -30,20 +30,20 @@ jobs:
 
           mkdir -p ~/.ssh
 
-          echo "$EC2_SSH_PRIVATE_KEY_B64" | base64 -d > ~/.ssh/meetmind.pem
-          chmod 600 ~/.ssh/meetmind.pem
+          echo "$EC2_SSH_PRIVATE_KEY_B64" | base64 -d > ~/.ssh/recallmeet.pem
+          chmod 600 ~/.ssh/recallmeet.pem
 
           ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
 
-          ssh -i ~/.ssh/meetmind.pem \
+          ssh -i ~/.ssh/recallmeet.pem \
             "$EC2_USER@$EC2_HOST" \
             "cd ~/MeetMind && \
              git fetch origin main && \
              git checkout main && \
              git reset --hard $DEPLOY_SHA && \
              cd backend && \
-             docker build -t meetmind-backend:latest . && \
+             docker build -t recallmeet-backend:latest . && \
              docker compose up -d --no-build --force-recreate && \
              docker image prune -f"
 
-          rm -f ~/.ssh/meetmind.pem
+          rm -f ~/.ssh/recallmeet.pem

@@ -37,7 +37,7 @@ import redis
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
-TEST_DB_URL = "postgresql+psycopg://postgres:postgres@localhost:5433/meetmind_test"
+TEST_DB_URL = "postgresql+psycopg://postgres:postgres@localhost:5433/recallmeet_test"
 TEST_REDIS_URL = "redis://localhost:6380/0"
 
 os.environ["DATABASE_URL"] = TEST_DB_URL

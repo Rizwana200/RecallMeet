@@ -1,1 +1,1 @@
-# MeetMind backend application package.
+# RecallMeet backend application package.

@@ -1,5 +1,5 @@
 ﻿"use client";
-// Google Sign-In button that exchanges a Google ID token for MeetMind auth.
+// Google Sign-In button that exchanges a Google ID token for RecallMeet auth.
 // The GSI client script is loaded and initialized exactly once per page load
 // (module-level flags), so re-mounting this component (login -> dashboard ->
 // login) no longer re-initializes google.accounts.id or emits the

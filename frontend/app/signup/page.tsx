@@ -28,7 +28,7 @@ export default function SignupPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    document.title = "Sign up — MeetMind";
+    document.title = "Sign up — RecallMeet";
   }, []);
 
   const handleGoogleCredential = useCallback(async (credential: string) => {

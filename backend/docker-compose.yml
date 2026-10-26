@@ -7,7 +7,7 @@ services:
 
     build: .
 
-    image: meetmind-backend:latest
+    image: recallmeet-backend:latest
 
     ports:
 
@@ -23,7 +23,7 @@ services:
 
     build: .
 
-    image: meetmind-backend:latest
+    image: recallmeet-backend:latest
 
     command: celery -A app.workers.celery_app worker --loglevel=info --pool=solo
 

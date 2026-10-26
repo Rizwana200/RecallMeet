@@ -7,7 +7,7 @@ from app.core.config import settings
 import app.models  # noqa: F401
 
 celery_app = Celery(
-    "meetmind",
+    "recallmeet",
     broker=settings.REDIS_URL,
     backend=settings.REDIS_URL,
     include=[

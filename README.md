@@ -336,7 +336,7 @@ response schemas are enforced with Pydantic. OpenAPI docs are available at
 |---|---|---|
 | POST | `/auth/signup` | Create account + default workspace, return access token, set refresh cookie |
 | POST | `/auth/login` | Email/password login (rate-limited, failure-only counting) |
-| POST | `/auth/google` | Exchange a Google ID token for a MeetMind session |
+| POST | `/auth/google` | Exchange a Google ID token for a RecallMeet session |
 | POST | `/auth/refresh` | Rotate refresh token (reuse detection), issue new access token |
 | POST | `/auth/logout` | Revoke refresh-token family, clear cookie |
 | GET | `/auth/me` | Current user profile |
@@ -458,7 +458,7 @@ to `MAX_TRANSCRIPT_CHARACTERS` (20k chars) and history to at most
 
 ## Security Design
 
-MeetMind was built with several deliberate security hardening choices:
+RecallMeet was built with several deliberate security hardening choices:
 
 - **Passwords** hashed with `bcrypt` (12 rounds); a 72-byte limit is enforced.
 - **Access tokens** are short-lived JWTs (15 min, HS256) sent as a bearer token.
