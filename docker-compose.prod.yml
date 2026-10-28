@@ -17,14 +17,19 @@ services:
     build: ./backend
     image: recallmeet-backend:latest
     env_file: ./backend/.env
-    depends_on: [db, redis]
+    depends_on:
+      - db
+      - redis
     restart: unless-stopped
 
   worker:
     image: recallmeet-backend:latest
     command: celery -A app.workers.celery_app worker --loglevel=info --pool=solo
     env_file: ./backend/.env
-    depends_on: [db, redis, backend]
+    depends_on:
+      - db
+      - redis
+      - backend
     restart: unless-stopped
 
   frontend:
@@ -32,6 +37,7 @@ services:
       context: ./frontend
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
     restart: unless-stopped
 
   caddy:
@@ -43,7 +49,9 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
-    depends_on: [frontend, backend]
+    depends_on:
+      - frontend
+      - backend
     restart: unless-stopped
 
 volumes:
