@@ -17,6 +17,73 @@ import { PasswordInput } from "@/components/auth/PasswordInput";
 import { GoogleSignIn } from "@/components/auth/GoogleSignIn";
 import { cn } from "@/lib/utils";
 
+// Pure CSS animations (no extra dependencies). Each block fades up in turn,
+// errors shake once, and everything is switched off for users who prefer
+// reduced motion.
+const ANIMATION_CSS = `
+@keyframes rm-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes rm-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+@keyframes rm-error-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes rm-line-grow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+.rm-rise {
+  opacity: 0;
+  animation: rm-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: var(--rm-delay, 0ms);
+}
+.rm-error {
+  animation: rm-error-in 0.25s ease-out, rm-shake 0.4s ease-in-out 0.05s;
+}
+.rm-line {
+  transform-origin: center;
+  animation: rm-line-grow 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--rm-delay, 0ms);
+}
+.rm-press {
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+}
+.rm-press:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px -6px rgba(0, 0, 0, 0.35);
+}
+.rm-press:not(:disabled):active {
+  transform: translateY(0) scale(0.98);
+}
+.rm-field input {
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.rm-field:focus-within label {
+  color: var(--primary);
+}
+.rm-field label {
+  transition: color 0.2s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rm-rise, .rm-error, .rm-line {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .rm-press { transition: none !important; }
+}
+`;
+
+function delay(ms: number): React.CSSProperties {
+  return { ["--rm-delay" as string]: `${ms}ms` } as React.CSSProperties;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const setAccessToken = useAuthStore((state) => state.setAccessToken);
@@ -102,19 +169,21 @@ export default function LoginPage() {
       title="Log in"
       description="Welcome back — your meeting intelligence is waiting."
       footer={
-        <>
+        <span className="rm-rise inline-block" style={delay(450)}>
           Don&apos;t have an account?{" "}
           <Link
             href="/signup"
-            className="font-medium text-primary underline-offset-4 hover:underline"
+            className="font-medium text-primary underline-offset-4 transition-colors hover:underline"
           >
             Sign up
           </Link>
-        </>
+        </span>
       }
     >
+      <style>{ANIMATION_CSS}</style>
+
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-2">
+        <div className="rm-rise rm-field flex flex-col gap-2" style={delay(80)}>
           <Label htmlFor="email">Email</Label>
           <Input
             id="email"
@@ -127,7 +196,7 @@ export default function LoginPage() {
           />
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="rm-rise rm-field flex flex-col gap-2" style={delay(160)}>
           <Label htmlFor="password">Password</Label>
           <PasswordInput
             id="password"
@@ -139,33 +208,47 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <p role="alert" className="text-sm text-destructive">
+          // key={error} remounts the node so the shake replays on every new error.
+          <p key={error} role="alert" className="rm-error text-sm text-destructive">
             {error}
           </p>
         )}
 
-        <Button type="submit" disabled={isLoading} className={cn("w-full")}>
-          {isLoading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" /> Logging in...
-            </>
-          ) : (
-            "Log in"
-          )}
-        </Button>
+        <div className="rm-rise" style={delay(240)}>
+          <Button
+            type="submit"
+            disabled={isLoading}
+            className={cn("rm-press w-full")}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Logging in...
+              </>
+            ) : (
+              "Log in"
+            )}
+          </Button>
+        </div>
       </form>
 
       <div className="my-4 flex items-center gap-2">
-        <div className="h-px flex-1 bg-border" />
-        <span className="text-xs text-muted-foreground">OR</span>
-        <div className="h-px flex-1 bg-border" />
+        <div className="rm-line h-px flex-1 bg-border" style={delay(320)} />
+        <span
+          className="rm-rise text-xs text-muted-foreground"
+          style={delay(340)}
+        >
+          OR
+        </span>
+        <div className="rm-line h-px flex-1 bg-border" style={delay(320)} />
       </div>
 
-      <GoogleSignIn
-        onCredential={handleGoogleCredential}
-        isLoading={isLoading}
-        label="Sign in with Google"
-      />
+      <div className="rm-rise" style={delay(400)}>
+        <GoogleSignIn
+          onCredential={handleGoogleCredential}
+          isLoading={isLoading}
+          label="Sign in with Google"
+        />
+      </div>
     </AuthShell>
   );
 }

@@ -1,4 +1,4 @@
-﻿# Meeting routes: presigned-upload request, listing, detail, and delete.
+﻿# Meeting routes: upload request, local file upload, listing, detail, and delete.
 
 import logging
 import uuid
@@ -6,7 +6,7 @@ import uuid
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
@@ -18,12 +18,7 @@ from app.models.workspace import WorkspaceMember
 from app.schemas.meeting import (
     UploadRequest, UploadResponse, MeetingSummary, MeetingDetail,
 )
-from app.services.s3 import (
-    generate_upload_key,
-    create_presigned_upload,
-    generate_download_url,
-    delete_object,
-)
+from app.services.s3 import generate_upload_key, local_path, delete_object
 from app.core.config import settings
 from app.workers.celery_app import celery_app
 
@@ -118,24 +113,51 @@ def request_upload(
         )
     db.refresh(meeting)
 
-    try:
-        presigned = create_presigned_upload(storage_key, max_size_mb=max_size_mb)
-    except Exception:
-        logger.exception(
-            "create_presigned_upload failed for meeting_id=%s workspace_id=%s "
-            "content_type=%r max_size_mb=%s",
-            meeting.id, workspace_id, data.content_type, max_size_mb,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to obtain upload credentials. Please try again.",
-        )
-
     return UploadResponse(
         meeting_id=meeting.id,
-        upload_url=presigned["url"],
-        upload_fields=presigned["fields"],
+        upload_url=f"/api/v1/workspaces/{workspace_id}/meetings/{meeting.id}/upload",
+        upload_fields={},
     )
+
+
+@router.post("/{meeting_id}/upload", status_code=status.HTTP_204_NO_CONTENT)
+def upload_file(
+    workspace_id: uuid.UUID,
+    meeting_id: uuid.UUID,
+    file: UploadFile = File(...),
+    membership: WorkspaceMember = Depends(get_workspace_membership),
+    db: Session = Depends(get_db),
+):
+    meeting = _meeting_for(meeting_id, workspace_id, db)
+    if meeting.status != "pending":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This meeting was already uploaded",
+        )
+
+    max_mb = (
+        settings.MAX_VIDEO_UPLOAD_SIZE_MB
+        if meeting.source_media_type == "video"
+        else settings.MAX_UPLOAD_SIZE_MB
+    )
+    max_bytes = max_mb * 1024 * 1024
+
+    path = local_path(meeting.storage_key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    written = 0
+    try:
+        with open(path, "wb") as out:
+            while chunk := file.file.read(1024 * 1024):
+                written += len(chunk)
+                if written > max_bytes:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="File too large",
+                    )
+                out.write(chunk)
+    except HTTPException:
+        path.unlink(missing_ok=True)
+        raise
 
 
 @router.post("/{meeting_id}/confirm-upload", response_model=MeetingSummary)
@@ -149,6 +171,12 @@ def confirm_upload(
 
     if meeting.status != "pending":
         return meeting
+
+    if not local_path(meeting.storage_key).exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The file has not been uploaded yet",
+        )
 
     celery_app.send_task("transcribe_meeting", args=[str(meeting.id)])
 

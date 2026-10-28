@@ -2,13 +2,16 @@
 // Chat page: conversation UI against multi-meeting RAG.
 
 import {
-  useState,
+  memo,
+  useCallback,
   useEffect,
+  useMemo,
   useRef,
+  useState,
   type KeyboardEvent,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import Markdown from "react-markdown";
+import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { apiClient } from "@/lib/api-client";
 import { useRequireAuth } from "@/lib/use-require-auth";
@@ -28,6 +31,10 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
+
+/* -------------------------------------------------------------------------- */
+/* Types                                                                      */
+/* -------------------------------------------------------------------------- */
 
 type ChatSource = {
   meeting_id: string;
@@ -53,60 +60,215 @@ type ChatMeeting = {
   summary_text: string | null;
 };
 
-function MarkdownContent({ content }: { content: string }) {
+type ApiError = {
+  response?: {
+    status?: number;
+    data?: { detail?: string; retry_after_seconds?: number };
+  };
+};
+
+/* -------------------------------------------------------------------------- */
+/* Animated colours (pure CSS, no extra dependencies)                         */
+/* -------------------------------------------------------------------------- */
+
+const CHAT_CSS = `
+@keyframes rm-gradient-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes rm-msg-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes rm-dot {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40%           { transform: translateY(-4px); opacity: 1; }
+}
+@keyframes rm-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes rm-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.0); }
+  50%      { box-shadow: 0 0 18px 2px rgba(245, 158, 11, 0.35); }
+}
+.rm-gradient {
+  background-image: linear-gradient(120deg, #10b981, #f59e0b, #84cc16, #10b981);
+  background-size: 300% 300%;
+  animation: rm-gradient-shift 10s ease infinite;
+  color: #fff;
+}
+.rm-gradient-text {
+  background-image: linear-gradient(120deg, #10b981, #f59e0b, #84cc16, #10b981);
+  background-size: 300% 300%;
+  animation: rm-gradient-shift 10s ease infinite;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.rm-msg { animation: rm-msg-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.rm-fade { animation: rm-fade-in 0.3s ease both; }
+.rm-ai-bubble {
+  border-left: 3px solid transparent;
+  border-image: linear-gradient(180deg, #10b981, #84cc16) 1;
+}
+.rm-dot { animation: rm-dot 1.2s ease-in-out infinite; }
+.rm-send:not(:disabled) { animation: rm-gradient-shift 10s ease infinite, rm-glow 3s ease-in-out infinite; }
+.rm-send { transition: transform 0.15s ease; }
+.rm-send:not(:disabled):hover { transform: translateY(-1px); }
+.rm-send:not(:disabled):active { transform: scale(0.97); }
+.rm-composer:focus-within {
+  border-color: transparent;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.45);
+}
+.rm-composer { transition: box-shadow 0.2s ease, border-color 0.2s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .rm-gradient, .rm-gradient-text, .rm-msg, .rm-fade, .rm-dot, .rm-send {
+    animation: none !important;
+  }
+}
+`;
+
+/* -------------------------------------------------------------------------- */
+/* Markdown (components object hoisted so it is created once)                 */
+/* -------------------------------------------------------------------------- */
+
+const MARKDOWN_COMPONENTS: Components = {
+  p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  ul: ({ children }) => (
+    <ul className="list-disc pl-5 mb-2 flex flex-col gap-1">{children}</ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="list-decimal pl-5 mb-2 flex flex-col gap-1">{children}</ol>
+  ),
+  h1: ({ children }) => (
+    <h1 className="text-base font-semibold mb-2 mt-3">{children}</h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="text-base font-semibold mb-2 mt-3">{children}</h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="text-sm font-semibold mb-1 mt-2">{children}</h3>
+  ),
+  table: ({ children }) => (
+    <div className="overflow-x-auto mb-2">
+      <table className="border-collapse text-xs w-full">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => (
+    <th className="border px-2 py-1 bg-muted text-left font-semibold">
+      {children}
+    </th>
+  ),
+  td: ({ children }) => <td className="border px-2 py-1 align-top">{children}</td>,
+  code: ({ children }) => (
+    <code className="bg-background/60 px-1 py-0.5 rounded text-xs">{children}</code>
+  ),
+};
+
+const REMARK_PLUGINS = [remarkGfm];
+
+const MarkdownContent = memo(function MarkdownContent({
+  content,
+}: {
+  content: string;
+}) {
   return (
     <div className="text-sm leading-relaxed break-words min-w-0 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-      <Markdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-          strong: ({ children }) => (
-            <strong className="font-semibold">{children}</strong>
-          ),
-          ul: ({ children }) => (
-            <ul className="list-disc pl-5 mb-2 flex flex-col gap-1">
-              {children}
-            </ul>
-          ),
-          ol: ({ children }) => (
-            <ol className="list-decimal pl-5 mb-2 flex flex-col gap-1">
-              {children}
-            </ol>
-          ),
-          h1: ({ children }) => (
-            <h1 className="text-base font-semibold mb-2 mt-3">{children}</h1>
-          ),
-          h2: ({ children }) => (
-            <h2 className="text-base font-semibold mb-2 mt-3">{children}</h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className="text-sm font-semibold mb-1 mt-2">{children}</h3>
-          ),
-          table: ({ children }) => (
-            <div className="overflow-x-auto mb-2">
-              <table className="border-collapse text-xs w-full">{children}</table>
-            </div>
-          ),
-          th: ({ children }) => (
-            <th className="border px-2 py-1 bg-muted text-left font-semibold">
-              {children}
-            </th>
-          ),
-          td: ({ children }) => (
-            <td className="border px-2 py-1 align-top">{children}</td>
-          ),
-          code: ({ children }) => (
-            <code className="bg-muted px-1 py-0.5 rounded text-xs">
-              {children}
-            </code>
-          ),
-        }}
-      >
+      <Markdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>
         {content}
       </Markdown>
     </div>
   );
+});
+
+/* -------------------------------------------------------------------------- */
+/* Message list                                                               */
+/* -------------------------------------------------------------------------- */
+
+const MessageBubble = memo(function MessageBubble({
+  message,
+}: {
+  message: ChatMessage;
+}) {
+  const isUser = message.role === "user";
+  return (
+    <div className={cn("rm-msg", isUser ? "text-right" : "text-left")}>
+      {isUser ? (
+        <div className="rm-gradient inline-block rounded-2xl rounded-br-sm px-3 py-2 max-w-[70%] text-sm whitespace-pre-wrap break-words cursor-text shadow-sm">
+          {message.content}
+        </div>
+      ) : (
+        <div className="rm-ai-bubble inline-block rounded-2xl rounded-bl-sm px-3 py-2 max-w-[80%] bg-muted text-left break-words cursor-text">
+          <MarkdownContent content={message.content} />
+        </div>
+      )}
+      {message.sources && message.sources.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          {message.sources.map((s) => (
+            <span key={s.meeting_id}>📎 {s.meeting_title}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
+
+function StatusBubble({ label }: { label: string }) {
+  return (
+    <div className="rm-fade text-left">
+      <div className="inline-flex items-center gap-2 rounded-2xl bg-muted px-3 py-2 text-sm text-muted-foreground">
+        <span>{label}</span>
+        <span className="inline-flex gap-1" aria-hidden="true">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="rm-dot h-1.5 w-1.5 rounded-full bg-amber-500"
+              style={{ animationDelay: `${i * 0.15}s` }}
+            />
+          ))}
+        </span>
+      </div>
+    </div>
+  );
 }
+
+function MessageList({
+  messages,
+  sending,
+  loadingMessages,
+  bottomRef,
+}: {
+  messages: ChatMessage[];
+  sending: boolean;
+  loadingMessages: boolean;
+  bottomRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  return (
+    <ScrollArea className="h-full">
+      <div className="space-y-4 p-1">
+        {messages.length === 0 && !loadingMessages && (
+          <p className="rm-fade text-sm text-muted-foreground">
+            Ask a question about your meetings to get started.
+          </p>
+        )}
+        {messages.map((m, i) => (
+          <MessageBubble key={i} message={m} />
+        ))}
+        {sending && <StatusBubble label="Thinking" />}
+        {loadingMessages && <StatusBubble label="Loading conversation" />}
+        <div ref={bottomRef} />
+      </div>
+    </ScrollArea>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Meeting picker                                                             */
+/* -------------------------------------------------------------------------- */
+
 function MeetingCatalog({
   meetings,
   selectedMeetingIds,
@@ -126,7 +288,7 @@ function MeetingCatalog({
     );
   }
   return (
-    <div className="flex flex-col gap-2">
+    <div className="rm-fade flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium">Available meetings</h3>
         {selectedMeetingIds.length > 0 && (
@@ -148,21 +310,34 @@ function MeetingCatalog({
             <Button
               key={meeting.id}
               variant={isSelected ? "default" : "outline"}
-              className="w-full justify-start text-left h-auto py-2 px-3 gap-2"
+              className={cn(
+                "w-full justify-start text-left h-auto py-2 px-3 gap-2 transition-colors",
+                isSelected && "rm-gradient border-0"
+              )}
               onClick={() => onToggleMeeting(meeting.id)}
             >
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium truncate">{meeting.title}</p>
-                <p className="text-xs text-muted-foreground truncate">
+                <p
+                  className={cn(
+                    "text-xs truncate",
+                    isSelected ? "text-white/80" : "text-muted-foreground"
+                  )}
+                >
                   {new Date(meeting.created_at).toLocaleDateString()}
                 </p>
                 {meeting.summary_text && (
-                  <p className="text-xs text-muted-foreground line-clamp-2 mt-1">
+                  <p
+                    className={cn(
+                      "text-xs line-clamp-2 mt-1",
+                      isSelected ? "text-white/80" : "text-muted-foreground"
+                    )}
+                  >
                     {meeting.summary_text}
                   </p>
                 )}
               </div>
-              {isSelected && <MessageSquare className="w-4 h-4 text-primary" />}
+              {isSelected && <MessageSquare className="w-4 h-4" />}
             </Button>
           );
         })}
@@ -180,19 +355,23 @@ function SelectedMeetingsBar({
   selectedMeetingIds: string[];
   onRemoveMeeting: (id: string) => void;
 }) {
-  const selected = meetings.filter((m) => selectedMeetingIds.includes(m.id));
+  const selected = useMemo(
+    () => meetings.filter((m) => selectedMeetingIds.includes(m.id)),
+    [meetings, selectedMeetingIds]
+  );
   if (selected.length === 0) return null;
   return (
-    <div className="flex flex-wrap gap-2 mb-4 p-3 bg-muted/50 rounded-lg">
+    <div className="rm-fade flex flex-wrap items-center gap-2 mb-4 p-3 bg-muted/50 rounded-lg">
       <span className="text-xs text-muted-foreground mr-2">Context:</span>
       {selected.map((meeting) => (
-        <Badge key={meeting.id} variant="secondary" className="gap-1">
+        <Badge key={meeting.id} variant="secondary" className="rm-msg gap-1">
           {meeting.title}
           <Button
             variant="ghost"
             size="icon"
             className="h-5 w-5 p-0"
             onClick={() => onRemoveMeeting(meeting.id)}
+            aria-label={`Remove ${meeting.title}`}
           >
             <X className="w-3 h-3" />
           </Button>
@@ -201,26 +380,32 @@ function SelectedMeetingsBar({
     </div>
   );
 }
-function relativeDayLabel(date: Date) {
-  const now = new Date();
+
+/* -------------------------------------------------------------------------- */
+/* Sidebar                                                                    */
+/* -------------------------------------------------------------------------- */
+
+const GROUP_ORDER = ["Today", "Yesterday", "Previous 7 days", "Older"];
+const DAY_MS = 86_400_000;
+
+function relativeDayLabel(date: Date, now: Date) {
   const startOfDay = (d: Date) =>
     new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const diffDays = Math.round((startOfDay(now) - startOfDay(date)) / 86400000);
+  const diffDays = Math.round((startOfDay(now) - startOfDay(date)) / DAY_MS);
   if (diffDays <= 0) return "Today";
   if (diffDays === 1) return "Yesterday";
   if (diffDays <= 7) return "Previous 7 days";
   return "Older";
 }
 
-const GROUP_ORDER = ["Today", "Yesterday", "Previous 7 days", "Older"];
-
 function groupSessions(sessions: ChatSession[]) {
+  const now = new Date();
   const map = new Map<string, ChatSession[]>();
   const sorted = [...sessions].sort(
     (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
   );
   for (const s of sorted) {
-    const label = relativeDayLabel(new Date(s.updated_at));
+    const label = relativeDayLabel(new Date(s.updated_at), now);
     const arr = map.get(label) ?? [];
     arr.push(s);
     map.set(label, arr);
@@ -230,6 +415,42 @@ function groupSessions(sessions: ChatSession[]) {
     items: map.get(label)!,
   }));
 }
+
+const SessionButton = memo(function SessionButton({
+  session,
+  active,
+  onSelect,
+}: {
+  session: ChatSession;
+  active: boolean;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(session.id)}
+      className={cn(
+        "w-full rounded-lg px-2 py-2 text-left text-sm transition-all select-none",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        active
+          ? "bg-gradient-to-r from-emerald-500/15 via-amber-500/10 to-rose-500/10 text-foreground border-l-2 border-amber-500"
+          : "border-l-2 border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"
+      )}
+    >
+      <span className="block font-medium truncate">
+        {session.title || "Untitled chat"}
+      </span>
+      <span className="mt-0.5 block text-xs text-muted-foreground">
+        {new Date(session.updated_at).toLocaleString(undefined, {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        })}
+      </span>
+    </button>
+  );
+});
 
 function ChatSidebar({
   sessions,
@@ -248,6 +469,8 @@ function ChatSidebar({
   onToggleCollapsed: () => void;
   loading: boolean;
 }) {
+  const groups = useMemo(() => groupSessions(sessions), [sessions]);
+
   if (collapsed) {
     return (
       <aside className="flex h-full w-12 shrink-0 flex-col items-center border-r border-border bg-card py-3">
@@ -271,11 +494,13 @@ function ChatSidebar({
       </aside>
     );
   }
-  const groups = groupSessions(sessions);
+
   return (
     <aside className="flex h-full w-72 shrink-0 flex-col border-r border-border bg-card">
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-3">
-        <h2 className="px-1 text-sm font-semibold truncate">Chat history</h2>
+        <h2 className="rm-gradient-text px-1 text-sm font-semibold truncate">
+          Chat history
+        </h2>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -310,35 +535,14 @@ function ChatSidebar({
                 {group.label}
               </p>
               <div className="flex flex-col gap-0.5">
-                {group.items.map((session) => {
-                  const active = session.id === activeSessionId;
-                  return (
-                    <button
-                      key={session.id}
-                      type="button"
-                      onClick={() => onSelect(session.id)}
-                      className={cn(
-                        "w-full rounded-lg px-2 py-2 text-left text-sm transition-colors select-none",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        active
-                          ? "bg-primary/10 text-foreground"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                      )}
-                    >
-                      <span className="block font-medium truncate">
-                        {session.title || "Untitled chat"}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-muted-foreground">
-                        {new Date(session.updated_at).toLocaleString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    </button>
-                  );
-                })}
+                {group.items.map((session) => (
+                  <SessionButton
+                    key={session.id}
+                    session={session}
+                    active={session.id === activeSessionId}
+                    onSelect={onSelect}
+                  />
+                ))}
               </div>
             </div>
           ))}
@@ -347,10 +551,17 @@ function ChatSidebar({
     </aside>
   );
 }
+
+/* -------------------------------------------------------------------------- */
+/* Page                                                                       */
+/* -------------------------------------------------------------------------- */
+
 export default function ChatPage() {
   const { isCheckingAuth } = useRequireAuth();
   const queryClient = useQueryClient();
   usePageTitle("Chat — RecallMeet");
+
+  /* ---- server data ---- */
 
   const {
     data: workspaces,
@@ -360,39 +571,27 @@ export default function ChatPage() {
     isRefetching: workspacesRefetching,
   } = useQuery({
     queryKey: ["workspaces"],
-    queryFn: async () => {
-      const response = await apiClient.get("/api/v1/workspaces");
-      return response.data;
-    },
+    queryFn: async () => (await apiClient.get("/api/v1/workspaces")).data,
     enabled: !isCheckingAuth,
   });
 
-  const workspaceId = workspaces?.[0]?.id;
+  const workspaceId: string | undefined = workspaces?.[0]?.id;
 
-  const { data: chatMeetings = [] } = useQuery({
+  const { data: chatMeetings = [] } = useQuery<ChatMeeting[]>({
     queryKey: ["chat-meetings", workspaceId],
-    queryFn: async () => {
-      const response = await apiClient.get(
-        `/api/v1/workspaces/${workspaceId}/chat/meetings`
-      );
-      return response.data;
-    },
+    queryFn: async () =>
+      (await apiClient.get(`/api/v1/workspaces/${workspaceId}/chat/meetings`)).data,
     enabled: !!workspaceId,
   });
 
-  const {
-    data: sessions = [],
-    isLoading: sessionsLoading,
-  } = useQuery({
+  const { data: sessions = [], isLoading: sessionsLoading } = useQuery<ChatSession[]>({
     queryKey: ["chat-sessions", workspaceId],
-    queryFn: async () => {
-      const response = await apiClient.get(
-        `/api/v1/workspaces/${workspaceId}/chat/sessions`
-      );
-      return response.data;
-    },
+    queryFn: async () =>
+      (await apiClient.get(`/api/v1/workspaces/${workspaceId}/chat/sessions`)).data,
     enabled: !!workspaceId,
   });
+
+  /* ---- local state ---- */
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -405,10 +604,12 @@ export default function ChatPage() {
   const [selectedMeetingIds, setSelectedMeetingIds] = useState<string[]>([]);
   const [showCatalog, setShowCatalog] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-async function sendMessage() {
+
+  /* ---- actions ---- */
+
+  async function sendMessage() {
     if (!input.trim() || !workspaceId || sending) return;
     const question = input.trim();
     setInput("");
@@ -416,13 +617,8 @@ async function sendMessage() {
     setError(null);
     setRateLimited(false);
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "user",
-        content: question,
-      },
-    ]);
+    setMessages((prev) => [...prev, { role: "user", content: question }]);
+
     try {
       const res = await apiClient.post(`/api/v1/workspaces/${workspaceId}/chat`, {
         question,
@@ -435,32 +631,21 @@ async function sendMessage() {
       await queryClient.invalidateQueries({
         queryKey: ["chat-sessions", workspaceId],
       });
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: answer,
-          sources,
-        },
-      ]);
+      setMessages((prev) => [...prev, { role: "assistant", content: answer, sources }]);
     } catch (err) {
-
-      const error = err as {
-        response?: {
-          status?: number;
-          data?: { detail?: string; retry_after_seconds?: number };
-        };
-      };
-      if (error.response?.status === 429) {
+      const apiError = err as ApiError;
+      if (apiError.response?.status === 429) {
         setRateLimited(true);
-        const retry = error.response?.data?.retry_after_seconds ?? 60;
+        const retry = apiError.response?.data?.retry_after_seconds ?? 60;
         setRetryAfter(retry);
         setError(`Rate limited. Try again in ${retry} seconds.`);
       } else {
         const detail =
-          error.response?.data?.detail ?? "Something went wrong. Please try again.";
+          apiError.response?.data?.detail ?? "Something went wrong. Please try again.";
         setError(detail);
-        toast.error(typeof detail === "string" ? detail : "Something went wrong. Please try again.");
+        toast.error(
+          typeof detail === "string" ? detail : "Something went wrong. Please try again."
+        );
       }
       setInput(question);
       setMessages((prev) => prev.slice(0, -1));
@@ -476,57 +661,62 @@ async function sendMessage() {
     }
   }
 
-  function toggleMeeting(id: string) {
+  const toggleMeeting = useCallback((id: string) => {
     setSelectedMeetingIds((prev) =>
       prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
     );
-  }
+  }, []);
 
-  function removeMeeting(id: string) {
+  const removeMeeting = useCallback((id: string) => {
     setSelectedMeetingIds((prev) => prev.filter((m) => m !== id));
-  }
+  }, []);
 
-  function clearAllMeetings() {
-    setSelectedMeetingIds([]);
-  }
+  const clearAllMeetings = useCallback(() => setSelectedMeetingIds([]), []);
 
-  async function openSession(id: string) {
-    if (id === sessionId) return;
-    if (!workspaceId) return;
-    setLoadingMessages(true);
-    setError(null);
-    try {
-      const response = await apiClient.get(
-        `/api/v1/workspaces/${workspaceId}/chat/sessions/${id}/messages`
-      );
-      setSessionId(id);
-      setMessages(
-        response.data.map(
-          (m: { role: string; content: string; sources?: ChatSource[] }) => ({
-            role: m.role === "assistant" ? "assistant" : "user",
-            content: m.content,
-            sources: m.sources ?? undefined,
-          })
-        )
-      );
-    } catch {
-      setError("Couldn't load that conversation.");
-      toast.error("Couldn't load that conversation.");
-    } finally {
-      setLoadingMessages(false);
-    }
-  }
+  const openSession = useCallback(
+    async (id: string) => {
+      if (id === sessionId || !workspaceId) return;
+      setLoadingMessages(true);
+      setError(null);
+      try {
+        const response = await apiClient.get(
+          `/api/v1/workspaces/${workspaceId}/chat/sessions/${id}/messages`
+        );
+        setSessionId(id);
+        setMessages(
+          response.data.map(
+            (m: { role: string; content: string; sources?: ChatSource[] }) => ({
+              role: m.role === "assistant" ? "assistant" : "user",
+              content: m.content,
+              sources: m.sources ?? undefined,
+            })
+          )
+        );
+      } catch {
+        setError("Couldn't load that conversation.");
+        toast.error("Couldn't load that conversation.");
+      } finally {
+        setLoadingMessages(false);
+      }
+    },
+    [sessionId, workspaceId]
+  );
 
-  function newChat() {
+  const newChat = useCallback(() => {
     setSessionId(null);
     setMessages([]);
     setError(null);
     setInput("");
-  }
+  }, []);
+
+  const toggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
+  const closeMobileHistory = useCallback(() => setMobileHistoryOpen(false), []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages, sending, loadingMessages]);
+
+  /* ---- loading / error screens ---- */
 
   if (isCheckingAuth || workspacesLoading) {
     return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
@@ -547,8 +737,13 @@ async function sendMessage() {
     );
   }
 
+  /* ---- main layout ---- */
+
   return (
-<div className="flex h-[calc(100vh-1rem)] overflow-hidden lg:h-screen">
+    <div className="flex h-[calc(100vh-1rem)] overflow-hidden lg:h-screen">
+      <style>{CHAT_CSS}</style>
+
+      {/* Mobile history drawer */}
       <div className="md:hidden">
         <button
           type="button"
@@ -559,29 +754,29 @@ async function sendMessage() {
           <PanelLeftOpen className="h-5 w-5" />
         </button>
         {mobileHistoryOpen && (
-          <div
-            className="fixed inset-0 z-40 md:hidden"
-            onClick={() => setMobileHistoryOpen(false)}
-          >
+          <div className="fixed inset-0 z-40 md:hidden" onClick={closeMobileHistory}>
             <div
-              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-              onClick={() => setMobileHistoryOpen(false)}
+              className="rm-fade absolute inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={closeMobileHistory}
               aria-hidden="true"
             />
-            <div className="absolute inset-y-0 left-0 z-10 w-72 bg-card shadow-xl">
+            <div
+              className="absolute inset-y-0 left-0 z-10 w-72 bg-card shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
               <ChatSidebar
                 sessions={sessions}
                 activeSessionId={sessionId}
                 onSelect={(id) => {
                   openSession(id);
-                  setMobileHistoryOpen(false);
+                  closeMobileHistory();
                 }}
                 onNewChat={() => {
                   newChat();
-                  setMobileHistoryOpen(false);
+                  closeMobileHistory();
                 }}
                 collapsed={false}
-                onToggleCollapsed={() => setMobileHistoryOpen(false)}
+                onToggleCollapsed={closeMobileHistory}
                 loading={sessionsLoading}
               />
             </div>
@@ -589,6 +784,7 @@ async function sendMessage() {
         )}
       </div>
 
+      {/* Desktop sidebar */}
       <div className="hidden md:flex">
         <ChatSidebar
           sessions={sessions}
@@ -596,22 +792,25 @@ async function sendMessage() {
           onSelect={openSession}
           onNewChat={newChat}
           collapsed={!sidebarOpen}
-          onToggleCollapsed={() => setSidebarOpen((o) => !o)}
+          onToggleCollapsed={toggleSidebar}
           loading={sessionsLoading}
         />
       </div>
 
+      {/* Conversation */}
       <div className="flex min-w-0 flex-1 flex-col p-4">
         <div className="mx-auto flex w-full max-w-2xl min-h-0 flex-1 flex-col">
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-lg font-semibold flex items-center gap-2">
-              <MessageSquare className="w-5 h-5" />
-              Meeting Chat
+              <span className="rm-gradient flex h-8 w-8 items-center justify-center rounded-lg">
+                <MessageSquare className="w-4 h-4" />
+              </span>
+              <span className="rm-gradient-text">Meeting Chat</span>
             </h1>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setShowCatalog(!showCatalog)}
+              onClick={() => setShowCatalog((s) => !s)}
               className="gap-1"
             >
               {showCatalog ? (
@@ -622,6 +821,7 @@ async function sendMessage() {
               Meetings
             </Button>
           </div>
+
           {showCatalog && (
             <div className="mb-4">
               <MeetingCatalog
@@ -632,16 +832,17 @@ async function sendMessage() {
               />
             </div>
           )}
+
           <SelectedMeetingsBar
             meetings={chatMeetings}
             selectedMeetingIds={selectedMeetingIds}
             onRemoveMeeting={removeMeeting}
           />
+
           {rateLimited && retryAfter && (
-            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 flex items-center justify-between">
+            <div className="rm-msg mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800 flex items-center justify-between">
               <span>
-                Rate limited. Please wait {retryAfter}s before sending another
-                message.
+                Rate limited. Please wait {retryAfter}s before sending another message.
               </span>
               <Button
                 variant="ghost"
@@ -655,59 +856,23 @@ async function sendMessage() {
               </Button>
             </div>
           )}
+
           {error && !rateLimited && (
-            <p className="text-sm text-destructive mb-2">{error}</p>
+            <p key={error} className="rm-msg text-sm text-destructive mb-2">
+              {error}
+            </p>
           )}
-<div className="flex-1 min-h-0 mb-4">
-            <ScrollArea className="h-full">
-              <div className="space-y-4 p-1">
-                {messages.length === 0 && !loadingMessages && (
-                  <p className="text-sm text-muted-foreground">
-                    Ask a question about your meetings to get started.
-                  </p>
-                )}
-                {messages.map((m, i) => (
-                  <div
-                    key={i}
-                    className={m.role === "user" ? "text-right" : "text-left"}
-                  >
-                    {m.role === "user" ? (
-                      <div className="inline-block rounded-lg px-3 py-2 max-w-[70%] text-sm bg-primary text-primary-foreground whitespace-pre-wrap break-words cursor-text">
-                        {m.content}
-                      </div>
-                    ) : (
-                      <div className="inline-block rounded-lg px-3 py-2 max-w-[80%] bg-muted text-left break-words cursor-text">
-                        <MarkdownContent content={m.content} />
-                      </div>
-                    )}
-                    {m.sources && m.sources.length > 0 && (
-                      <div className="mt-1 text-xs text-muted-foreground space-x-2">
-                        {m.sources.map((s) => (
-                          <span key={s.meeting_id}>📎 {s.meeting_title}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-                {sending && (
-                  <div className="text-left">
-                    <div className="inline-block rounded-lg px-3 py-2 bg-muted text-sm text-muted-foreground">
-                      Thinking…
-                    </div>
-                  </div>
-                )}
-                {loadingMessages && (
-                  <div className="text-left">
-                    <div className="inline-block rounded-lg px-3 py-2 bg-muted text-sm text-muted-foreground">
-                      Loading conversation…
-                    </div>
-                  </div>
-                )}
-                <div ref={bottomRef} />
-              </div>
-            </ScrollArea>
+
+          <div className="flex-1 min-h-0 mb-4">
+            <MessageList
+              messages={messages}
+              sending={sending}
+              loadingMessages={loadingMessages}
+              bottomRef={bottomRef}
+            />
           </div>
-          <div className="flex gap-2">
+
+          <div className="rm-composer flex gap-2 rounded-xl border border-border bg-card p-2">
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -715,10 +880,12 @@ async function sendMessage() {
               placeholder={rateLimited ? `Wait ${retryAfter}s…` : "Ask about your meetings…"}
               rows={2}
               disabled={sending || rateLimited}
+              className="border-0 shadow-none focus-visible:ring-0 resize-none"
             />
             <Button
               onClick={sendMessage}
               disabled={sending || !input.trim() || rateLimited}
+              className="rm-gradient rm-send self-end border-0"
             >
               Send
             </Button>

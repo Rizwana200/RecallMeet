@@ -1,19 +1,22 @@
-# Celery task that downloads media, converts video to audio, and transcribes with Whisper.
+# Celery task that loads media from local disk, converts it to 16 kHz mono WAV with ffmpeg, and transcribes with Whisper.
 
+import glob
 import os
+import shutil
 import subprocess
-import sys
 import tempfile
+import wave
 
+import numpy as np
 from faster_whisper import WhisperModel
 
 from app.workers.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.models.meeting import Meeting
-from app.services.s3 import s3_client
-from app.core.config import settings
+from app.services.s3 import local_path
 
-_model = WhisperModel("medium", device="cpu", compute_type="int8",cpu_threads=2)
+# "base" is much faster on CPU for local testing. Change to "medium" for better accuracy.
+_model = WhisperModel("base", device="cpu", compute_type="int8", cpu_threads=2)
 
 EXTENSION_BY_MIME = {
     "audio/mpeg": ".mp3",
@@ -28,17 +31,42 @@ EXTENSION_BY_MIME = {
     "video/quicktime": ".mov",
 }
 
-def convert_video_to_audio(input_path: str, output_path: str) -> None:
+
+def _find_ffmpeg() -> str:
     """
-    Extract the audio track from a video file with ffmpeg, downsampled to
-    16 kHz mono WAV — the format faster-whisper likes best. Raises
-    subprocess.CalledProcessError if ffmpeg can't handle the file (e.g. a
-    video with no audio stream), which the caller translates into a "failed"
-    meeting with a helpful error message.
+    Find the ffmpeg executable: FFMPEG_PATH env var, then PATH, then the
+    default WinGet install location on Windows. Falls back to plain "ffmpeg".
+    """
+    from_env = os.environ.get("FFMPEG_PATH")
+    if from_env and os.path.exists(from_env):
+        return from_env
+
+    on_path = shutil.which("ffmpeg")
+    if on_path:
+        return on_path
+
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        pattern = os.path.join(
+            local_app_data, "Microsoft", "WinGet", "Packages",
+            "Gyan.FFmpeg*", "**", "bin", "ffmpeg.exe",
+        )
+        matches = glob.glob(pattern, recursive=True)
+        if matches:
+            return matches[0]
+
+    return "ffmpeg"
+
+
+def convert_to_wav(input_path: str, output_path: str) -> None:
+    """
+    Decode any audio/video file with ffmpeg to 16 kHz mono 16-bit WAV, the
+    format faster-whisper likes best. Raises subprocess.CalledProcessError if
+    ffmpeg can't handle the file (e.g. a video with no audio stream).
     """
     subprocess.run(
         [
-            "ffmpeg",
+            _find_ffmpeg(),
             "-y",
             "-i", input_path,
             "-vn",
@@ -51,6 +79,14 @@ def convert_video_to_audio(input_path: str, output_path: str) -> None:
         capture_output=True,
         text=True,
     )
+
+
+def load_wav_as_array(wav_path: str) -> np.ndarray:
+    """Read a 16 kHz mono 16-bit WAV into a float32 array in [-1, 1]."""
+    with wave.open(wav_path, "rb") as wav_file:
+        frames = wav_file.readframes(wav_file.getnframes())
+    return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+
 
 @celery_app.task(name="transcribe_meeting")
 def transcribe_meeting(meeting_id: str):
@@ -68,19 +104,22 @@ def transcribe_meeting(meeting_id: str):
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             source_path = os.path.join(tmp_dir, f"media_file{extension}")
-            s3_client.download_file(settings.S3_BUCKET_NAME, meeting.storage_key, source_path)
+            shutil.copyfile(local_path(meeting.storage_key), source_path)
 
             if meeting.source_media_type == "video":
                 meeting.status = "converting"
                 db.commit()
 
-                wav_path = os.path.join(tmp_dir, "converted_audio.wav")
-                convert_video_to_audio(source_path, wav_path)
-                transcribe_path = wav_path
-            else:
-                transcribe_path = source_path
+            wav_path = os.path.join(tmp_dir, "converted_audio.wav")
+            convert_to_wav(source_path, wav_path)
 
-            segments, _info = _model.transcribe(transcribe_path, task="translate")
+            if meeting.source_media_type == "video":
+                meeting.status = "transcribing"
+                db.commit()
+
+            audio = load_wav_as_array(wav_path)
+
+            segments, _info = _model.transcribe(audio, task="translate")
             full_text = " ".join(segment.text.strip() for segment in segments)
 
         meeting.transcript_text = full_text
@@ -99,14 +138,14 @@ def transcribe_meeting(meeting_id: str):
     finally:
         db.close()
 
+
 def _friendly_error(exc: Exception) -> str:
     """Map low-level pipeline failures to a human-readable reason."""
     if isinstance(exc, subprocess.CalledProcessError):
         return (
-            "We couldn't process this video — it may not contain an audio track "
+            "We couldn't process this recording — it may not contain an audio track "
             "or may use an unsupported codec."
         )
-    text = str(exc)
-    if "download" in text.lower():
-        return "The uploaded file couldn't be downloaded from storage."
+    if isinstance(exc, FileNotFoundError):
+        return "A required file or tool (such as ffmpeg) could not be found on the server."
     return "An unexpected error occurred while processing this meeting."

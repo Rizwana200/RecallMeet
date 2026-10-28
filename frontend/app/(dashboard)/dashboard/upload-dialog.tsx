@@ -1,8 +1,7 @@
 ﻿"use client";
 
-// Upload dialog: requests a presigned upload from the API and uploads the file
-// straight to S3 with a single multipart/form-data POST using XMLHttpRequest
-// for upload progress and cancel support. No multipart chunking.
+// Upload dialog: requests an upload slot from the API, then sends the file to the
+// backend (stored on local disk) with progress and cancel support.
 
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -103,7 +102,7 @@ export function UploadDialog({
 
   const queryClient = useQueryClient();
 
-  const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const cancelledRef = useRef(false);
 
@@ -125,58 +124,28 @@ export function UploadDialog({
 
     cancelledRef.current = true;
     setStatus("Cancelling...");
-    xhrRef.current?.abort();
+    abortRef.current?.abort();
   };
 
-  const uploadToS3 = (
+  const uploadToServer = async (
     uploadFile: File,
     data: UploadResponse
   ): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const formData = new FormData();
+    const formData = new FormData();
+    formData.append("file", uploadFile, uploadFile.name);
 
-      Object.entries(data.upload_fields).forEach(([key, value]) => {
-        formData.append(key, value);
-      });
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-      formData.append("file", uploadFile, uploadFile.name);
-
-      const xhr = new XMLHttpRequest();
-      xhrRef.current = xhr;
-
-      xhr.open("POST", data.upload_url);
-
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          setProgress(
-            Math.round((event.loaded / event.total) * 100)
-          );
+    await apiClient.post(data.upload_url, formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      signal: controller.signal,
+      timeout: 0,
+      onUploadProgress: (event) => {
+        if (event.total) {
+          setProgress(Math.round((event.loaded / event.total) * 100));
         }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          resolve();
-        } else {
-          reject(
-            new Error(`Upload failed with status ${xhr.status}.`)
-          );
-        }
-      };
-
-      xhr.onerror = () => {
-        reject(
-          new Error(
-            "Network error while uploading. Please try again."
-          )
-        );
-      };
-
-      xhr.onabort = () => {
-        reject(new Error("Upload cancelled."));
-      };
-
-      xhr.send(formData);
+      },
     });
   };
 
@@ -220,7 +189,7 @@ export function UploadDialog({
       );
 
       setStatus("Uploading recording...");
-      await uploadToS3(file, data);
+      await uploadToServer(file, data);
 
       setStatus("Starting AI processing...");
 
@@ -265,7 +234,7 @@ export function UploadDialog({
       setUploading(false);
       setStatus("");
       setProgress(0);
-      xhrRef.current = null;
+      abortRef.current = null;
       cancelledRef.current = false;
     }
   };

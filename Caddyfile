@@ -1,0 +1,10 @@
+yourapp.duckdns.org {
+    reverse_proxy frontend:3000
+}
+
+yourapp-api.duckdns.org {
+    request_body {
+        max_size 10MB
+    }
+    reverse_proxy backend:8000
+}
